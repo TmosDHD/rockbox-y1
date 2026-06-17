@@ -122,6 +122,15 @@ void list_init_item_height(struct gui_synclist *list, enum screen_type screen)
 #else
     list->line_height[screen] = line_height;
 #endif
+
+    /* In image mode (e.g. database album-art thumbnails) make each row tall
+       enough to hold a square thumbnail beside the text. */
+    if (list->callback_get_item_image)
+    {
+        int min_h = 2 * line_height;
+        if (list->line_height[screen] < min_h)
+            list->line_height[screen] = min_h;
+    }
 }
 
 static void gui_synclist_init_display_settings(struct gui_synclist * list)
@@ -158,6 +167,7 @@ void gui_synclist_init(struct gui_synclist * gui_list,
     gui_list->callback_get_item_name = callback_get_item_name;
     gui_list->callback_speak_item = NULL;
     gui_list->callback_draw_item = NULL;
+    gui_list->callback_get_item_image = NULL;
     gui_list->nb_items = 0;
     gui_list->selected_item = 0;
     gui_synclist_init_display_settings(gui_list);
@@ -460,6 +470,15 @@ void gui_synclist_set_icon_callback(struct gui_synclist * lists,
                                     list_get_icon icon_callback)
 {
     lists->callback_get_item_icon = icon_callback;
+}
+
+void gui_synclist_set_item_image_callback(struct gui_synclist * lists,
+                                          list_get_item_image image_callback)
+{
+    lists->callback_get_item_image = image_callback;
+    /* row height depends on whether per-row images are shown */
+    FOR_NB_SCREENS(i)
+        list_init_item_height(lists, i);
 }
 
 void gui_synclist_set_voice_callback(struct gui_synclist * lists,

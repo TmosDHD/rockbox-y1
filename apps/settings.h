@@ -622,6 +622,7 @@ struct user_settings
     int tagcache_ram;        /* load tagcache to ram: 1=on, 2=quick (ignore dircache) */
 #endif
     bool tagcache_autoupdate; /* automatically keep tagcache in sync? */
+    bool db_albumart;         /* show album-art thumbnails in the database browser */
     bool autoresume_enable;   /* enable auto-resume feature? */
     int autoresume_automatic; /* resume next track? 0=never, 1=always,
                                  2=custom */

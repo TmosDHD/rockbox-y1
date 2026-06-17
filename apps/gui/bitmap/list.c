@@ -105,6 +105,23 @@ static void _default_listdraw_fn(struct list_putlineinfo_t *list_info)
     struct line_desc *linedes = list_info->linedes;
     const char *dsp_text = list_info->dsp_text;
 
+    /* Image mode: draw a per-row thumbnail in a square gutter on the left, with
+       the text shifted to its right. The gutter is reserved on every row (even
+       those without an image) so the text columns stay aligned. Used by the
+       database browser for album-art thumbnails. */
+    if (!is_title && list_info->list->callback_get_item_image)
+    {
+        struct bitmap *img = list_info->item_image;
+        int rowh = linedes->height;
+        int gutter = rowh; /* square thumbnail area */
+        display->put_line(x, y, linedes, "$*s$*t",
+                          item_indent + gutter, item_offset, dsp_text);
+        if (img && img->width > 0 && img->height > 0)
+            display->bmp(img, x + item_indent + (gutter - img->width) / 2,
+                              y + (rowh - img->height) / 2);
+        return;
+    }
+
     if (is_title)
     {
         if (have_icons)
@@ -437,6 +454,8 @@ void list_draw(struct screen *display, struct gui_synclist *list)
         list_info.icon = icon;
         list_info.dsp_text = entry_name;
         list_info.item_offset = item_offset;
+        list_info.item_image = list->callback_get_item_image ?
+                    list->callback_get_item_image(i, list->data) : NULL;
 
         callback_draw_item(&list_info);
     }

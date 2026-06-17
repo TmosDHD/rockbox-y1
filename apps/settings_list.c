@@ -1857,6 +1857,10 @@ const struct settings_list settings[] = {
 #endif
     OFFON_SETTING(F_BANFROMQS, tagcache_autoupdate, LANG_TAGCACHE_AUTOUPDATE, false,
                   "tagcache_autoupdate", NULL),
+#if defined(HAVE_ALBUMART) && defined(HAVE_BMP_SCALING) && (LCD_DEPTH > 1)
+    OFFON_SETTING(0, db_albumart, LANG_DATABASE_ALBUMART, true,
+                  "database album art", NULL),
+#endif
 #endif
     CHOICE_SETTING(F_TEMPVAR, default_codepage, LANG_DEFAULT_CODEPAGE, 14,
                    "default codepage",

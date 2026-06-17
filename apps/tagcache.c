@@ -4959,8 +4959,15 @@ static bool check_dir(const char *dirname, int add_files)
     const char *pl_dir = PLAYLIST_CATALOG_DEFAULT_DIR;
     if (global_settings.playlist_catalog_dir[0] != '\0')
         pl_dir = (const char*)global_settings.playlist_catalog_dir;
+#ifdef APPLICATION
+    /* handle_special_dirs() is only provided by the hosted application
+       filesystem layer (firmware/target/hosted/filesystem-app.c). It is not
+       linked into simulator/native builds, so skip it there. */
     handle_special_dirs(pl_dir, 0, playlist_dir, sizeof(playlist_dir));
     pl_dir = playlist_dir;
+#else
+    (void)playlist_dir;
+#endif
 
     /* Recursively scan the dir. */
     while (!check_event_queue())

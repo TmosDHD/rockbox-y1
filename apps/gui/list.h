@@ -57,6 +57,17 @@ enum synclist_cursor
  */
 typedef enum themable_icons list_get_icon(int selected_item, void * data);
 /*
+ * Item image callback (optional)
+ *  - selected_item : the item number
+ *  - data : the list's callback data
+ *  Returns a pointer to a bitmap to draw in a left-hand gutter for this item
+ *  (e.g. an album-art thumbnail), or NULL to leave the gutter empty.
+ *  When a list has this callback set it is drawn in "image" mode: every row
+ *  reserves a square gutter so the text stays aligned.
+ */
+struct bitmap;
+typedef struct bitmap * list_get_item_image(int selected_item, void * data);
+/*
  * Text callback
  *  - selected_item : an integer that tells the number of the item to display
  *  - data : a void pointer to the data you gave to the list when you
@@ -85,6 +96,7 @@ struct list_putlineinfo_t {
 
     int icon;
     int icon_width;
+    struct bitmap *item_image; /* optional per-row image (album art), or NULL */
 
     struct screen *display;
     struct viewport *vp;
@@ -171,6 +183,7 @@ struct gui_synclist
     list_get_name *callback_get_item_name;
     list_speak_item *callback_speak_item;
     list_draw_item *callback_draw_item;
+    list_get_item_image *callback_get_item_image;
 
     /* The data that will be passed to the callback function YOU implement */
     void * data;
@@ -200,6 +213,7 @@ extern void gui_synclist_init(
     );
 extern void gui_synclist_set_nb_items(struct gui_synclist * lists, int nb_items);
 extern void gui_synclist_set_icon_callback(struct gui_synclist * lists, list_get_icon icon_callback);
+extern void gui_synclist_set_item_image_callback(struct gui_synclist * lists, list_get_item_image image_callback);
 extern void gui_synclist_set_voice_callback(struct gui_synclist * lists, list_speak_item voice_callback);
 extern void gui_synclist_set_viewport_defaults(struct viewport *vp, enum screen_type screen);
 #ifdef HAVE_LCD_COLOR

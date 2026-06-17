@@ -2763,6 +2763,20 @@
   </voice>
 </phrase>
 <phrase>
+  id: LANG_DATABASE_ALBUMART
+  desc: in database settings, toggle album-art thumbnails in the browser
+  user: core
+  <source>
+    *: "Show Album Art"
+  </source>
+  <dest>
+    *: "Show Album Art"
+  </dest>
+  <voice>
+    *: "Show Album Art"
+  </voice>
+</phrase>
+<phrase>
   id: LANG_SCROLL_MENU
   desc: in display_settings_menu()
   user: core

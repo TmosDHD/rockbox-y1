@@ -138,6 +138,7 @@ recorder/jpeg_idct_arm.S
 #endif
 #ifdef HAVE_ALBUMART
 recorder/albumart.c
+recorder/aa_thumb.c
 #endif
 #ifdef HAVE_LCD_COLOR
 gui/color_picker.c

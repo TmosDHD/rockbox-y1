@@ -45,6 +45,8 @@
 #include "playlist.h"
 #include "keyboard.h"
 #include "gui/list.h"
+#include "font.h"
+#include "recorder/aa_thumb.h"
 #include "core_alloc.h"
 #include "yesno.h"
 #include "misc.h"
@@ -2788,3 +2790,38 @@ int tagtree_get_icon(struct tree_context* c)
 
     return icon;
 }
+
+#ifdef HAVE_DB_ALBUMART
+/* List image callback: returns the album-art thumbnail for the song row at
+ * index, or NULL. Only song rows (FILE_ATTR_AUDIO) have per-track cover art;
+ * category rows (artists/albums/genres) return NULL. */
+struct bitmap *tagtree_get_albumart(int index, void *data)
+{
+    struct tree_context *c = (struct tree_context *)data;
+    struct tagcache_search tcs;
+    struct tagentry *entry;
+    char buf[MAX_PATH];
+    int sz;
+
+    if (tagtree_get_attr(c) != FILE_ATTR_AUDIO)
+        return NULL;
+
+    entry = tagtree_get_entry(c, index);
+    if (!entry)
+        return NULL;
+
+    /* resolve this row's track filename from the database */
+    if (!tagcache_search(&tcs, tag_filename))
+        return NULL;
+    if (!tagcache_retrieve(&tcs, entry->extraseek, tcs.type, buf, sizeof(buf)))
+    {
+        tagcache_search_finish(&tcs);
+        return NULL;
+    }
+    tagcache_search_finish(&tcs);
+
+    /* request a thumbnail roughly two text-lines tall to match the row height */
+    sz = 2 * font_get(FONT_UI)->height;
+    return aa_thumb_get(buf, sz);
+}
+#endif /* HAVE_DB_ALBUMART */

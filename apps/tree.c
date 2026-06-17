@@ -56,6 +56,7 @@
 #include "pathfuncs.h"
 #include "filetree.h"
 #include "tagtree.h"
+#include "recorder/aa_thumb.h"
 #ifdef HAVE_RECORDING
 #include "recorder/recording.h"
 #endif
@@ -522,6 +523,11 @@ static int update_dir(void)
     gui_synclist_set_icon_callback(list,
                             global_settings.show_icons?tree_get_fileicon:NULL);
     gui_synclist_set_voice_callback(list, &tree_voice_cb);
+#ifdef HAVE_DB_ALBUMART
+    /* Show album-art thumbnails when browsing the database (song lists). */
+    gui_synclist_set_item_image_callback(list,
+                            (id3db && global_settings.db_albumart) ? tagtree_get_albumart : NULL);
+#endif
 #ifdef HAVE_LCD_COLOR
     gui_synclist_set_color_callback(list, &tree_get_filecolor);
 #endif
