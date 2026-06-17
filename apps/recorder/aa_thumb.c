@@ -32,6 +32,9 @@
 #include "metadata.h"      /* struct mp3entry */
 #include "albumart.h"      /* find_albumart */
 #include "bmp.h"           /* read_bmp_file, BM_SCALED_SIZE, struct dim */
+#ifdef HAVE_JPEG
+#include "jpeg_load.h"     /* clip_jpeg_fd - decode embedded (JPEG) cover art */
+#endif
 
 /* How many distinct thumbnails to keep decoded at once. A few screens worth is
  * plenty: only the visible rows are ever requested per draw, so this just needs
@@ -41,6 +44,17 @@
 /* Bytes needed to hold one AA_THUMB_MAX-square native bitmap plus the scaler's
  * working overhead (see BM_SCALED_SIZE in bmp.h). */
 #define AA_THUMB_BUFSZ BM_SCALED_SIZE(AA_THUMB_MAX, AA_THUMB_MAX, FORMAT_NATIVE, false)
+
+#ifdef HAVE_JPEG
+/* Embedded cover art (usually a JPEG inside the file's tags) is decoded
+ * straight from the track. The JPEG decoder needs a scratch area of
+ * JPEG_DECODE_OVERHEAD (38KB plus the decoder state struct) on top of the
+ * scaled output - far more than the small per-entry buffers - so decode into
+ * this one shared area and copy the finished thumbnail into the entry's buf.
+ * Sized generously; clip_jpeg_fd() fails gracefully (rc <= 0) if it needs more
+ * and we simply fall back to external art / no art. */
+#define AA_DECODE_BUFSZ (160 * 1024)
+#endif
 
 enum thumb_state
 {
@@ -61,6 +75,9 @@ struct thumb_entry
 static struct thumb_entry cache[AA_THUMB_COUNT];
 static int cached_size;          /* thumbnail box size currently in the cache */
 static struct mp3entry probe;    /* transient; the browser is single-threaded */
+#ifdef HAVE_JPEG
+static unsigned char aa_decode_buf[AA_DECODE_BUFSZ]; /* shared JPEG decode scratch */
+#endif
 
 void aa_thumb_clear(void)
 {
@@ -131,9 +148,46 @@ struct bitmap *aa_thumb_get(const char *trackpath, int size)
     e->lru = current_tick;
     e->state = TH_NONE;   /* assume no art until proven otherwise */
 
+    /* Read this track's tags: tells us whether it carries embedded art, and
+     * fills the fields find_albumart() needs to match named external covers. */
     memset(&probe, 0, sizeof(probe));
-    strmemccpy(probe.path, e->track, sizeof(probe.path));
+    if (!get_metadata(&probe, -1, e->track))
+        return NULL;
 
+#ifdef HAVE_JPEG
+    /* 1) Embedded album art - the common case: a JPEG stored in the file's
+     *    tags. Decode it from the file at its recorded offset into the shared
+     *    scratch, then keep the finished thumbnail in the entry's own buffer. */
+    if (probe.has_embedded_albumart && probe.albumart.size > 0)
+    {
+        int fd = open(e->track, O_RDONLY);
+        if (fd >= 0)
+        {
+            struct bitmap tmp;
+            int rc;
+            memset(&tmp, 0, sizeof(tmp));
+            tmp.data = aa_decode_buf;
+            tmp.width = size;       /* box; decoder scales to fit, keeps aspect */
+            tmp.height = size;
+            lseek(fd, probe.albumart.pos, SEEK_SET);
+            rc = clip_jpeg_fd(fd, probe.albumart.type, probe.albumart.size,
+                              &tmp, (int)sizeof(aa_decode_buf),
+                              FORMAT_NATIVE | FORMAT_RESIZE | FORMAT_KEEP_ASPECT
+                              | FORMAT_DITHER, NULL);
+            close(fd);
+            if (rc > 0 && (size_t)rc <= sizeof(e->buf))
+            {
+                memcpy(e->buf, aa_decode_buf, rc);
+                e->bm = tmp;
+                e->bm.data = e->buf;
+                e->state = TH_LOADED;
+                return &e->bm;
+            }
+        }
+    }
+#endif /* HAVE_JPEG */
+
+    /* 2) Fall back to an external cover file (cover.bmp / folder.bmp / named). */
     dim.width = size;
     dim.height = size;
     if (find_albumart(&probe, coverpath, sizeof(coverpath), &dim))
