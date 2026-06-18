@@ -56,6 +56,9 @@
 #define AA_DECODE_BUFSZ (160 * 1024)
 #endif
 
+/* TEMPORARY on-device decode dump (remove before the feature commit). */
+#define AA_DEV_DUMP
+
 enum thumb_state
 {
     TH_EMPTY = 0,   /* slot unused */
@@ -181,6 +184,35 @@ struct bitmap *aa_thumb_get(const char *trackpath, int size)
                 e->bm = tmp;
                 e->bm.data = e->buf;
                 e->state = TH_LOADED;
+#ifdef AA_DEV_DUMP
+                {
+                    static int dn = 0;
+                    if (dn < 4)
+                    {
+                        char nm[80];
+                        snprintf(nm, sizeof(nm), "/sdcard/.rockbox/aa_dev%d.raw", dn);
+                        int dfd = open(nm, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+                        if (dfd >= 0)
+                        {
+                            int meta[3] = { e->bm.width, e->bm.height, rc };
+                            write(dfd, meta, sizeof(meta));
+                            write(dfd, e->buf, rc);
+                            close(dfd);
+                        }
+                        int lfd = open("/sdcard/.rockbox/aa_dev.txt",
+                                       O_CREAT | O_WRONLY | O_APPEND, 0666);
+                        if (lfd >= 0)
+                        {
+                            fdprintf(lfd, "dump%d type=%d pos=%ld size=%ld rc=%d %dx%d\n",
+                                     dn, (int)probe.albumart.type,
+                                     (long)probe.albumart.pos, (long)probe.albumart.size,
+                                     rc, e->bm.width, e->bm.height);
+                            close(lfd);
+                        }
+                        dn++;
+                    }
+                }
+#endif
                 return &e->bm;
             }
         }
@@ -207,5 +239,173 @@ struct bitmap *aa_thumb_get(const char *trackpath, int size)
 
     return NULL;
 }
+
+#if defined(SIMULATOR)
+/* ===== TEMPORARY decode self-test (SIMULATOR only; excluded from device APK) =====
+ * Reproduces the on-device "garbled noise" embedded-cover bug off-line: decodes a
+ * known track's cover three ways and dumps each as a BMP plus a diagnostic log,
+ * so we can see exactly where the corruption enters. Remove before shipping. */
+
+static void aa_dump_bmp565(const char *path, struct bitmap *bm)
+{
+    int w = bm->width, h = bm->height;
+    if (w <= 0 || h <= 0 || w > AA_THUMB_MAX)
+        return;
+    int rowsize = (w * 3 + 3) & ~3;
+    long datasize = (long)rowsize * h;
+    long filesize = 54 + datasize;
+    unsigned char hdr[54];
+    static unsigned char row[AA_THUMB_MAX * 3 + 4];
+    memset(hdr, 0, sizeof(hdr));
+    hdr[0] = 'B'; hdr[1] = 'M';
+    hdr[2] = filesize; hdr[3] = filesize >> 8; hdr[4] = filesize >> 16; hdr[5] = filesize >> 24;
+    hdr[10] = 54;
+    hdr[14] = 40;
+    hdr[18] = w; hdr[19] = w >> 8; hdr[20] = w >> 16; hdr[21] = w >> 24;
+    hdr[22] = h; hdr[23] = h >> 8; hdr[24] = h >> 16; hdr[25] = h >> 24;
+    hdr[26] = 1;
+    hdr[28] = 24;
+    hdr[34] = datasize; hdr[35] = datasize >> 8; hdr[36] = datasize >> 16; hdr[37] = datasize >> 24;
+    int fd = open(path, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (fd < 0)
+        return;
+    write(fd, hdr, 54);
+    /* fb_data is 16-bit RGB565 on this target; BMP rows are bottom-up, BGR. */
+    unsigned short *px = (unsigned short *)bm->data;
+    for (int y = h - 1; y >= 0; y--)
+    {
+        unsigned char *p = row;
+        unsigned short *src = px + (long)y * w;
+        for (int x = 0; x < w; x++)
+        {
+            unsigned short v = src[x];
+            int r5 = (v >> 11) & 0x1f, g6 = (v >> 5) & 0x3f, b5 = v & 0x1f;
+            *p++ = (b5 << 3) | (b5 >> 2);
+            *p++ = (g6 << 2) | (g6 >> 4);
+            *p++ = (r5 << 3) | (r5 >> 2);
+        }
+        while ((p - row) < rowsize)
+            *p++ = 0;
+        write(fd, row, rowsize);
+    }
+    close(fd);
+}
+
+void aa_thumb_selftest(void)
+{
+    const char *path = "/aa_test.mp3";
+    const int size = AA_THUMB_MAX;
+    int lg = open("/aa_selftest.txt", O_CREAT | O_WRONLY | O_TRUNC, 0666);
+    if (lg < 0)
+        return;
+
+    static struct mp3entry mp;
+    memset(&mp, 0, sizeof(mp));
+    bool gm = get_metadata(&mp, -1, path);
+    fdprintf(lg, "get_metadata=%d has_embedded=%d aa.type=%d unsync=%d vorbis=%d pos=%ld size=%ld\n",
+             (int)gm, (int)mp.has_embedded_albumart, (int)mp.albumart.type,
+             (int)((mp.albumart.type & AA_FLAG_ID3_UNSYNC) != 0),
+             (int)((mp.albumart.type & AA_FLAG_VORBIS_BASE64) != 0),
+             (long)mp.albumart.pos, (long)mp.albumart.size);
+
+#ifdef HAVE_JPEG
+    if (gm && mp.has_embedded_albumart && mp.albumart.size > 0)
+    {
+        /* D1: embedded decode at several target sizes (the device uses
+         * 2*font_height, not necessarily 64) to catch a size-dependent bug. */
+        static const int sizes[] = {16, 24, 32, 40, 48, 56, 64};
+        for (unsigned si = 0; si < sizeof(sizes) / sizeof(sizes[0]); si++)
+        {
+            int sz = sizes[si];
+            struct bitmap bm;
+            memset(&bm, 0, sizeof(bm));
+            bm.data = aa_decode_buf;
+            bm.width = sz;
+            bm.height = sz;
+            int fd = open(path, O_RDONLY);
+            if (fd >= 0)
+            {
+                lseek(fd, mp.albumart.pos, SEEK_SET);
+                int rc = clip_jpeg_fd(fd, mp.albumart.type, mp.albumart.size, &bm,
+                                      (int)sizeof(aa_decode_buf),
+                                      FORMAT_NATIVE | FORMAT_RESIZE | FORMAT_KEEP_ASPECT | FORMAT_DITHER, NULL);
+                close(fd);
+                char nm[64];
+                snprintf(nm, sizeof(nm), "/aa_d1_sz%d.bmp", sz);
+                fdprintf(lg, "D1 sz=%d rc=%d out=%dx%d\n", sz, rc, bm.width, bm.height);
+                if (rc > 0)
+                    aa_dump_bmp565(nm, &bm);
+            }
+        }
+        /* and once more at the default 64 box for the D2/D3 comparison */
+        struct bitmap bm;
+        memset(&bm, 0, sizeof(bm));
+        bm.data = aa_decode_buf;
+        bm.width = size;
+        bm.height = size;
+        int fd = open(path, O_RDONLY);
+        if (fd >= 0)
+        {
+            lseek(fd, mp.albumart.pos, SEEK_SET);
+            int rc = clip_jpeg_fd(fd, mp.albumart.type, mp.albumart.size, &bm,
+                                  (int)sizeof(aa_decode_buf),
+                                  FORMAT_NATIVE | FORMAT_RESIZE | FORMAT_KEEP_ASPECT | FORMAT_DITHER, NULL);
+            close(fd);
+            fdprintf(lg, "D1 embedded clip_jpeg_fd rc=%d out=%dx%d expect_bytes=%d e_buf=%d\n",
+                     rc, bm.width, bm.height, bm.width * bm.height * 2, (int)AA_THUMB_BUFSZ);
+            if (rc > 0)
+                aa_dump_bmp565("/aa_d1_embedded.bmp", &bm);
+        }
+
+        /* D2: copy the embedded JPEG out to a file, decode via the external path. */
+        int infd = open(path, O_RDONLY);
+        int jf = open("/aa_cover.jpg", O_CREAT | O_WRONLY | O_TRUNC, 0666);
+        if (infd >= 0 && jf >= 0)
+        {
+            lseek(infd, mp.albumart.pos, SEEK_SET);
+            static unsigned char cp[65536];
+            long left = mp.albumart.size;
+            while (left > 0)
+            {
+                int n = read(infd, cp, (left < (long)sizeof(cp)) ? (int)left : (int)sizeof(cp));
+                if (n <= 0)
+                    break;
+                write(jf, cp, n);
+                left -= n;
+            }
+        }
+        if (infd >= 0) close(infd);
+        if (jf >= 0) close(jf);
+
+        memset(&bm, 0, sizeof(bm));
+        bm.data = aa_decode_buf;
+        bm.width = size;
+        bm.height = size;
+        int fd2 = open("/aa_cover.jpg", O_RDONLY);
+        if (fd2 >= 0)
+        {
+            int rc = read_jpeg_fd(fd2, &bm, (int)sizeof(aa_decode_buf),
+                                  FORMAT_NATIVE | FORMAT_RESIZE | FORMAT_KEEP_ASPECT | FORMAT_DITHER, NULL);
+            close(fd2);
+            fdprintf(lg, "D2 external read_jpeg_fd rc=%d out=%dx%d\n", rc, bm.width, bm.height);
+            if (rc > 0)
+                aa_dump_bmp565("/aa_d2_external.bmp", &bm);
+        }
+    }
+#endif /* HAVE_JPEG */
+
+    /* D3: the full aa_thumb_get() path (cache + memcpy into the entry buffer). */
+    struct bitmap *t = aa_thumb_get(path, size);
+    if (t)
+    {
+        fdprintf(lg, "D3 aa_thumb_get OK %dx%d\n", t->width, t->height);
+        aa_dump_bmp565("/aa_d3_full.bmp", t);
+    }
+    else
+        fdprintf(lg, "D3 aa_thumb_get NULL\n");
+
+    close(lg);
+}
+#endif /* SIMULATOR */
 
 #endif /* HAVE_DB_ALBUMART */
