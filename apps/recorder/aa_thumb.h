@@ -48,5 +48,14 @@ struct bitmap *aa_thumb_get(const char *trackpath, int size);
  * so stale entries from a previous view do not linger. */
 void aa_thumb_clear(void);
 
+/* Return a generic placeholder thumbnail (a flat neutral square scaled to a
+ * size x size box) to show in the gutter for a track whose cover art could not
+ * be found, so the column stays visually consistent. Generated once per size
+ * into a static buffer; size is clamped to AA_THUMB_MAX. Never returns NULL for
+ * a positive size. Used by lists that want every row to carry a thumbnail (the
+ * playlist viewer); the database browser keeps returning NULL for art-less
+ * rows so its category rows stay blank. */
+struct bitmap *aa_thumb_placeholder(int size);
+
 #endif /* HAVE_ALBUMART && HAVE_BMP_SCALING && LCD_DEPTH > 1 */
 #endif /* _AA_THUMB_H_ */

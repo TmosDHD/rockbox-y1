@@ -214,4 +214,37 @@ struct bitmap *aa_thumb_get(const char *trackpath, int size)
     return NULL;
 }
 
+struct bitmap *aa_thumb_placeholder(int size)
+{
+    /* A neutral filled square (with a slightly darker 1px border) drawn in the
+     * thumbnail gutter for tracks with no resolvable cover art. Generated once
+     * per requested size into its own static buffer — independent of the LRU
+     * cache above, so a missing-art row never evicts a real thumbnail. */
+    static fb_data ph_buf[AA_THUMB_MAX * AA_THUMB_MAX];
+    static struct bitmap ph_bm;
+    static int ph_size = 0;
+
+    if (size > AA_THUMB_MAX)
+        size = AA_THUMB_MAX;
+    if (size <= 0)
+        return NULL;
+
+    if (size != ph_size)
+    {
+        fb_data fill   = LCD_RGBPACK(0x40, 0x40, 0x40);
+        fb_data border = LCD_RGBPACK(0x20, 0x20, 0x20);
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+                ph_buf[y * size + x] =
+                    (x == 0 || y == 0 || x == size - 1 || y == size - 1)
+                        ? border : fill;
+        ph_bm.width  = size;
+        ph_bm.height = size;
+        ph_bm.format = FORMAT_NATIVE;
+        ph_bm.data   = (unsigned char *)ph_buf;
+        ph_size = size;
+    }
+    return &ph_bm;
+}
+
 #endif /* HAVE_DB_ALBUMART */

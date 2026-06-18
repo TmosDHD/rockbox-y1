@@ -51,6 +51,8 @@
 #include "menus/exported_menus.h"
 #include "yesno.h"
 #include "playback.h"
+#include "font.h"
+#include "recorder/aa_thumb.h"
 
 /* Maximum number of tracks we can have loaded at one time                   */
 #define MAX_PLAYLIST_ENTRIES 200
@@ -910,6 +912,26 @@ static int playlist_callback_voice(int selected_item, void *data)
     return 0;
 }
 
+#ifdef HAVE_DB_ALBUMART
+/* Album-art thumbnail for a playlist row: the track's own embedded/external
+ * cover, or a generic placeholder when none is found so every row carries a
+ * thumbnail. Mirrors the database browser's tagtree_get_albumart(), but the
+ * track path is already known here (entry->name), so no tagcache lookup. */
+static struct bitmap *playlist_callback_albumart(int selected_item, void *data)
+{
+    struct playlist_entry *track = pv_get_track(data, selected_item);
+    struct bitmap *bm;
+    int sz;
+
+    if (!track || !track->name)
+        return NULL;
+
+    sz = 2 * font_get(FONT_UI)->height;   /* matches the image-mode row height */
+    bm = aa_thumb_get(track->name, sz);
+    return bm ? bm : aa_thumb_placeholder(sz);
+}
+#endif /* HAVE_DB_ALBUMART */
+
 static void update_gui(struct gui_synclist * playlist_lists, bool init)
 {
     if (init)
@@ -922,6 +944,11 @@ static void update_gui(struct gui_synclist * playlist_lists, bool init)
     gui_synclist_set_icon_callback(playlist_lists,
                   global_settings.playlist_viewer_icons?
                   &playlist_callback_icons:NULL);
+#ifdef HAVE_DB_ALBUMART
+    gui_synclist_set_item_image_callback(playlist_lists,
+                  global_settings.db_albumart?
+                  &playlist_callback_albumart:NULL);
+#endif
     gui_synclist_set_title(playlist_lists, viewer.title, Icon_Playlist);
     gui_synclist_select_item(playlist_lists, viewer.selected_track);
     gui_synclist_draw(playlist_lists);
