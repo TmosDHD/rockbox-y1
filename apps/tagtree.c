@@ -2792,33 +2792,59 @@ int tagtree_get_icon(struct tree_context* c)
 }
 
 #ifdef HAVE_DB_ALBUMART
-/* List image callback: returns the album-art thumbnail for the song row at
- * index, or NULL. Only song rows (FILE_ATTR_AUDIO) have per-track cover art;
- * category rows (artists/albums/genres) return NULL. */
+/* List image callback: returns the album-art thumbnail for the row at index, or
+ * NULL. Song rows (FILE_ATTR_AUDIO) use their own track's cover; album rows use
+ * the cover of the album's first track. Other category rows (artists/genres)
+ * and the synthetic "All tracks"/"Random" rows have no cover. */
 struct bitmap *tagtree_get_albumart(int index, void *data)
 {
     struct tree_context *c = (struct tree_context *)data;
     struct tagcache_search tcs;
     struct tagentry *entry;
     char buf[MAX_PATH];
-    int sz;
-
-    if (tagtree_get_attr(c) != FILE_ATTR_AUDIO)
-        return NULL;
+    int sz, i, level;
 
     entry = tagtree_get_entry(c, index);
     if (!entry)
         return NULL;
 
-    /* resolve this row's track filename from the database */
-    if (!tagcache_search(&tcs, tag_filename))
-        return NULL;
-    if (!tagcache_retrieve(&tcs, entry->extraseek, tcs.type, buf, sizeof(buf)))
+    if (tagtree_get_attr(c) == FILE_ATTR_AUDIO)
     {
+        /* song row: resolve this track's filename directly */
+        if (!tagcache_search(&tcs, tag_filename))
+            return NULL;
+        if (!tagcache_retrieve(&tcs, entry->extraseek, tcs.type, buf, sizeof(buf)))
+        {
+            tagcache_search_finish(&tcs);
+            return NULL;
+        }
         tagcache_search_finish(&tcs);
-        return NULL;
     }
-    tagcache_search_finish(&tcs);
+    else
+    {
+        /* album row: use the album's first track as a representative cover. Only
+         * album category rows qualify; skip the synthetic "All tracks"/"Random". */
+        level = c->currextra;
+        if (c->currtable != TABLE_NAVIBROWSE || csi->tagorder[level] != tag_album)
+            return NULL;
+        if (entry->newtable == TABLE_ALLSUBENTRIES || entry->extraseek < 0)
+            return NULL;
+
+        if (!tagcache_search(&tcs, tag_filename))
+            return NULL;
+        /* narrow to this album within the current navigation context, then take
+         * its first track (mirrors how get_entries() descends one level). */
+        for (i = 0; i < level; i++)
+            if (!TAGCACHE_IS_NUMERIC(csi->tagorder[i]))
+                tagcache_search_add_filter(&tcs, csi->tagorder[i], csi->result_seek[i]);
+        tagcache_search_add_filter(&tcs, tag_album, entry->extraseek);
+        if (!tagcache_get_next(&tcs, buf, sizeof(buf)))
+        {
+            tagcache_search_finish(&tcs);
+            return NULL;
+        }
+        tagcache_search_finish(&tcs);
+    }
 
     /* request a thumbnail roughly two text-lines tall to match the row height */
     sz = 2 * font_get(FONT_UI)->height;
