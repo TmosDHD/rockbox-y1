@@ -27,7 +27,7 @@ jobs:
     - name: configure
       run: |
         cd android/build
-        ../../tools/configure --target=201 --lcdwidth=480 --lcdheight=360 --type=al
+        ../../tools/configure --target=201 --lcdwidth=480 --lcdheight=360 --type=adl
     - name: make
       run: |
         cd android/build
