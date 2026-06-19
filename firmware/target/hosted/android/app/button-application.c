@@ -82,9 +82,9 @@ unsigned dpad_to_button(int keyboard_key)
         case KEYCODE_DPAD_DOWN:
             return BUTTON_DPAD_DOWN|BUTTON_REL;
         case KEYCODE_DPAD_LEFT:
-            return BUTTON_DPAD_UP|BUTTON_REL; //BUTTON_DPAD_LEFT|BUTTON_REL;
+            return BUTTON_DPAD_LEFT|BUTTON_REL;
         case KEYCODE_DPAD_RIGHT:
-            return BUTTON_DPAD_DOWN|BUTTON_REL; //BUTTON_DPAD_RIGHT|BUTTON_REL;
+            return BUTTON_DPAD_RIGHT|BUTTON_REL;
         default:
             return BUTTON_NONE;
     }

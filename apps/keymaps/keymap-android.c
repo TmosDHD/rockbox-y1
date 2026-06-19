@@ -74,6 +74,11 @@ static const struct button_mapping button_context_wps[]  = {
     { ACTION_WPS_SKIPPREV,      BUTTON_MEDIA_PREV,                  BUTTON_NONE },
     { ACTION_WPS_SEEKFWD,       BUTTON_MEDIA_NEXT|BUTTON_REPEAT,    BUTTON_NONE },
     { ACTION_WPS_SEEKBACK,      BUTTON_MEDIA_PREV|BUTTON_REPEAT,    BUTTON_NONE },
+    /* Physical side buttons: right = next track, left = previous track
+       (classic iPod click-wheel scheme; the wheel itself controls volume
+       via the BUTTON_DPAD_UP/DOWN mappings above). */
+    { ACTION_WPS_SKIPNEXT,      BUTTON_DPAD_RIGHT|BUTTON_REL,       BUTTON_NONE },
+    { ACTION_WPS_SKIPPREV,      BUTTON_DPAD_LEFT|BUTTON_REL,        BUTTON_NONE },
 
     LAST_ITEM_IN_LIST
 }; /* button_context_wps */
