@@ -32,7 +32,6 @@
 #include "powermgmt.h"
 #include "android_keyevents.h"
 #include "settings.h"
-#include "debug.h"
 
 /* Android keycode definitions for media keys */
 #define KEYCODE_MEDIA_NEXT     22
@@ -89,8 +88,6 @@ Java_org_rockbox_RockboxFramebuffer_buttonHandler(JNIEnv*env, jclass class,
     (void)class;
 
     unsigned button = 0;
-
-    DEBUGF("RBKEY keycode=%d state=%d\n", (int)keycode, (int)state);
 
     /* Trigger vibration for DPAD buttons with adaptive intensity */
     if ((keycode == KEYCODE_DPAD_UP || keycode == KEYCODE_DPAD_DOWN) && global_settings.wheel_vibration_intensity > 0)
