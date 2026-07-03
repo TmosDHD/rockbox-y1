@@ -403,6 +403,7 @@ static int get_tag(int *tag)
         TAG_MATCH("lastelapsed", tag_lastelapsed) \
         TAG_MATCH("%menu_start", var_menu_start) \
         TAG_MATCH("%byfirstletter", menu_byfirstletter) \
+        TAG_MATCH("albumlastplayed", tag_virt_albumlastplayed) \
         TAG_MATCH("canonicalartist", tag_virt_canonicalartist) \
     /* END OF TAG_TABLE MACRO */
 

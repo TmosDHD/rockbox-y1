@@ -43,6 +43,7 @@ enum tag_type { tag_artist = 0, tag_album, tag_genre, tag_title,
     tag_virt_length_min, tag_virt_length_sec,
     tag_virt_playtime_min, tag_virt_playtime_sec,
     tag_virt_entryage, tag_virt_autoscore,
+    tag_virt_albumlastplayed,
     TAG_COUNT_ALL};
 
 /* How many entries to fetch to the seek table at once while searching. */
@@ -66,7 +67,8 @@ enum tag_type { tag_artist = 0, tag_album, tag_genre, tag_title,
     (1LU << tag_lastelapsed) | (1LU << tag_lastoffset) | \
     (1LU << tag_virt_length_min) | (1LU << tag_virt_length_sec) | \
     (1LU << tag_virt_playtime_min) | (1LU << tag_virt_playtime_sec) | \
-    (1LU << tag_virt_entryage) | (1LU << tag_virt_autoscore))
+    (1LU << tag_virt_entryage) | (1LU << tag_virt_autoscore) | \
+    (1LU << tag_virt_albumlastplayed))
 
 #define TAGCACHE_IS_NUMERIC(tag) (BIT_N(tag) & TAGCACHE_NUMERIC_TAGS)
 

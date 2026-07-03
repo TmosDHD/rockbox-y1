@@ -1303,6 +1303,129 @@ static long tc_find_tag(int tag, int idx_id, const struct index_entry *idx)
     return idx->tag_seek[tag];
 }
 
+/* Virtual tag albumlastplayed: the maximum lastplayed of an album's tracks.
+ *
+ * lastplayed is a per-track tag, and an album row in a database browse
+ * exposes an arbitrary track's numeric tags (the tag-file entry's frozen
+ * idx_id), so sorting albums by recency needs the per-album maximum.
+ * Computing that inside clause evaluation would be O(n^2) master-index
+ * reads on targets without the RAM cache, so the whole album->max table
+ * is built in a single pass and memoized until the next tagcache_search.
+ * The builder uses its own fd, leaving the search's masterfd position
+ * untouched (build_lookup_list reads it sequentially).
+ */
+#define ALP_MEMO_SLOTS 2048 /* power of two; ~16 KB */
+static struct { int32_t album_seek; int32_t lastplayed; }
+    alp_memo[ALP_MEMO_SLOTS];
+static bool alp_memo_valid = false;
+static bool alp_memo_overflow = false;
+
+static unsigned alp_hash(int32_t album_seek)
+{
+    return ((uint32_t)album_seek * 2654435761u) & (ALP_MEMO_SLOTS - 1);
+}
+
+static bool alp_insert(int32_t album_seek, long lastplayed)
+{
+    unsigned slot = alp_hash(album_seek);
+
+    for (int probe = 0; probe < ALP_MEMO_SLOTS; probe++)
+    {
+        if (alp_memo[slot].album_seek == album_seek)
+        {
+            if (lastplayed > alp_memo[slot].lastplayed)
+                alp_memo[slot].lastplayed = lastplayed;
+            return true;
+        }
+        if (alp_memo[slot].album_seek == -1)
+        {
+            alp_memo[slot].album_seek = album_seek;
+            alp_memo[slot].lastplayed = lastplayed;
+            return true;
+        }
+        slot = (slot + 1) & (ALP_MEMO_SLOTS - 1);
+    }
+
+    return false; /* table full */
+}
+
+/* Fallback when the memo overflowed: scan for a single album's maximum. */
+static long alp_scan_one(int32_t album_seek)
+{
+    struct master_header tcmh;
+    struct index_entry entry;
+    long max = 0;
+
+    int fd = open_master_fd(&tcmh, false);
+    if (fd < 0)
+        return 0;
+
+    for (int i = 0;
+         read_index_entries(fd, &entry, 1) == sizeof(struct index_entry); i++)
+    {
+        if (entry.flag & FLAG_DELETED)
+            continue;
+        if (entry.tag_seek[tag_album] != album_seek)
+            continue;
+
+        long lp = tc_find_tag(tag_lastplayed, i, &entry);
+        if (lp > max)
+            max = lp;
+    }
+
+    close(fd);
+    return max;
+}
+
+static bool alp_build(void)
+{
+    struct master_header tcmh;
+    struct index_entry entry;
+
+    int fd = open_master_fd(&tcmh, false);
+    if (fd < 0)
+        return false;
+
+    memset(alp_memo, 0xff, sizeof(alp_memo)); /* album_seek = -1: empty */
+    alp_memo_overflow = false;
+
+    for (int i = 0;
+         read_index_entries(fd, &entry, 1) == sizeof(struct index_entry); i++)
+    {
+        if (entry.flag & FLAG_DELETED)
+            continue;
+
+        if (!alp_insert(entry.tag_seek[tag_album],
+                        tc_find_tag(tag_lastplayed, i, &entry)))
+            alp_memo_overflow = true;
+    }
+
+    close(fd);
+    return true;
+}
+
+static long get_album_lastplayed(int32_t album_seek)
+{
+    if (!alp_memo_valid)
+    {
+        if (!alp_build())
+            return 0;
+        alp_memo_valid = true;
+    }
+
+    unsigned slot = alp_hash(album_seek);
+    for (int probe = 0; probe < ALP_MEMO_SLOTS; probe++)
+    {
+        if (alp_memo[slot].album_seek == album_seek)
+            return alp_memo[slot].lastplayed;
+        if (alp_memo[slot].album_seek == -1)
+            break; /* not in table */
+        slot = (slot + 1) & (ALP_MEMO_SLOTS - 1);
+    }
+
+    return alp_memo_overflow ? alp_scan_one(album_seek) : 0;
+}
+
 static inline long sec_in_ms(long ms)
 {
     return (ms/1000) % 60;
@@ -1362,6 +1485,10 @@ static long check_virtual_tags(int tag, int idx_id,
             }
             break;
 
+        case tag_virt_albumlastplayed:
+            data = get_album_lastplayed(idx->tag_seek[tag_album]);
+            break;
+
         /* How many commits before the file has been added to the DB. */
         case tag_virt_entryage:
             data = current_tcmh.commitid
@@ -1388,6 +1515,12 @@ long tagcache_get_numeric(const struct tagcache_search *tcs, int tag)
 
     if (!TAGCACHE_IS_NUMERIC(tag))
         return -1;
+
+    /* Album rows carry their own tag seek in result_seek; the tag-file
+       entry's idx_id is not a usable master-index reference here, so
+       resolve without get_index(). */
+    if (tag == tag_virt_albumlastplayed && tcs->type == tag_album)
+        return get_album_lastplayed(tcs->result_seek);
 
     if (!get_index(tcs->masterfd, tcs->idx_id, &idx, true))
         return -2;
@@ -1805,6 +1938,9 @@ bool tagcache_search(struct tagcache_search *tcs, int tag)
     memset(tcs, 0, sizeof(struct tagcache_search));
     if (tc_stat.commit_step > 0 || !tc_stat.ready)
         return false;
+
+    /* Runtime data may have changed since the last browse. */
+    alp_memo_valid = false;
 
     tcs->position = sizeof(struct tagcache_header);
     tcs->type = tag;
