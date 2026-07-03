@@ -17152,3 +17152,17 @@
     *: "Shutdown Device"
   </voice>
 </phrase>
+<phrase>
+  id: LANG_RECENTLY_PLAYED
+  desc: Recently Played main menu item
+  user: core
+  <source>
+    *: "Recently Played"
+  </source>
+  <dest>
+    *: "Recently Played"
+  </dest>
+  <voice>
+    *: "Recently Played"
+  </voice>
+</phrase>

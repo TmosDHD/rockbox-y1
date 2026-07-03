@@ -2035,6 +2035,39 @@ int tagtree_load(struct tree_context* c)
     return count;
 }
 
+/* Reset the database browser to its root menu and enter the entry whose
+ * (default, untranslated) name matches. Lets the root menu jump straight
+ * into a specific database view. Returns false if the entry is missing
+ * (e.g. a user tagnavi config removed it); the context is then left at
+ * the database root menu, which is still a sensible place to land. */
+bool tagtree_jump_to_entry(struct tree_context *c, const char *name)
+{
+    int i;
+
+    c->currtable = 0; /* tagtree_load() resets to the root menu */
+    c->dirlevel = 0;
+    c->selected_item = 0;
+    if (tagtree_load(c) <= 0)
+        return false;
+
+    for (i = 0; i < c->filesindir; i++)
+    {
+        struct tagentry *entry = tagtree_get_entry(c, i);
+        if (entry && !strcmp(P2STR((unsigned char *)entry->name), name))
+            break;
+    }
+
+    if (i >= c->filesindir)
+        return false;
+
+    c->selected_item = i;
+    if (tagtree_enter(c, true) < 0)
+        return false;
+    tagtree_load(c);
+
+    return true;
+}
+
 /* Enters menu or table for selected item in the database.
  *
  * Call this with the is_visible parameter set to false to

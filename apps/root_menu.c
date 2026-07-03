@@ -69,6 +69,7 @@
 #endif
 #ifdef HAVE_TAGCACHE
 #include "tagcache.h"
+#include "tagtree.h"
 #endif
 #include "language.h"
 #include "plugin.h"
@@ -172,6 +173,7 @@ static int browser(void* param)
         break;
 #ifdef HAVE_TAGCACHE
         case GO_TO_DBBROWSER:
+        case GO_TO_RECENTPLAYED:
             if (!tagcache_is_usable())
             {
                 bool reinit_attempted = false;
@@ -271,8 +273,18 @@ static int browser(void* param)
                 return GO_TO_PREVIOUS;
             filter = SHOW_ID3DB;
             last_ft_dirlevel = tc->dirlevel;
-            tc->dirlevel = last_db_dirlevel;
-            tc->selected_item = last_db_selection;
+            if ((intptr_t)param == GO_TO_RECENTPLAYED)
+            {
+                /* Jump straight into the Recently Played database view
+                   (falls back to the database root menu if a user
+                   tagnavi config removed the entry). */
+                tagtree_jump_to_entry(tc, "Recently Played");
+            }
+            else
+            {
+                tc->dirlevel = last_db_dirlevel;
+                tc->selected_item = last_db_selection;
+            }
             push_current_activity(ACTIVITY_DATABASEBROWSER);
         break;
 #endif /*HAVE_TAGCACHE*/
@@ -306,6 +318,7 @@ static int browser(void* param)
         break;
 #ifdef HAVE_TAGCACHE
         case GO_TO_DBBROWSER:
+        case GO_TO_RECENTPLAYED:
             last_db_dirlevel = tc->dirlevel;
             last_db_selection = tc->selected_item;
             tc->dirlevel = last_ft_dirlevel;
@@ -472,6 +485,7 @@ static const struct root_items items[] = {
     [GO_TO_FILEBROWSER] =   { browser, (void*)GO_TO_FILEBROWSER, &file_menu},
 #ifdef HAVE_TAGCACHE
     [GO_TO_DBBROWSER] =     { browser, (void*)GO_TO_DBBROWSER, &tagcache_menu },
+    [GO_TO_RECENTPLAYED] =  { browser, (void*)GO_TO_RECENTPLAYED, &tagcache_menu },
 #endif
     [GO_TO_WPS] =           { wpsscrn, NULL, &playback_settings },
     [GO_TO_MAINMENU] =      { miscscrn, (struct menu_item_ex*)&main_menu_,
@@ -512,6 +526,8 @@ MENUITEM_RETURNVALUE(file_browser, ID2P(LANG_DIR_BROWSER), GO_TO_FILEBROWSER,
 #ifdef HAVE_TAGCACHE
 MENUITEM_RETURNVALUE(db_browser, ID2P(LANG_TAGCACHE), GO_TO_DBBROWSER,
                         NULL, Icon_Audio);
+MENUITEM_RETURNVALUE(recentplayed_browser, ID2P(LANG_RECENTLY_PLAYED),
+                        GO_TO_RECENTPLAYED, NULL, Icon_Audio);
 #endif
 MENUITEM_RETURNVALUE(rocks_browser, ID2P(LANG_PLUGINS), GO_TO_BROWSEPLUGINS,
                         NULL, Icon_Plugin);
@@ -554,6 +570,7 @@ static struct menu_table menu_table[] = {
     { "files", &file_browser },
 #ifdef HAVE_TAGCACHE
     { "database", &db_browser },
+    { "recently_played", &recentplayed_browser },
 #endif
     { "wps", &wps_item },
     { "settings", &menu_ },
@@ -985,6 +1002,7 @@ void root_menu(void)
                 break;
 #ifdef HAVE_TAGCACHE
             case GO_TO_DBBROWSER:
+            case GO_TO_RECENTPLAYED:
 #endif
             case GO_TO_FILEBROWSER:
             case GO_TO_PLAYLISTS_SCREEN:
