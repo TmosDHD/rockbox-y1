@@ -1739,7 +1739,6 @@ static int retrieve_entries(struct tree_context *c, int offset, bool init)
                 break;
             }
         }
-
         if (strcmp(tcs.result, UNTAGGED) == 0)
         {
             if (tag == tag_title && tcs.type == tag_title && tcs.filter_count <= 1)
@@ -1885,7 +1884,9 @@ entry_skip_formatter:
 
     if (strip)
     {
-        dptr = get_entries(c);
+        /* Skip the special entries: their names are language-id pointers,
+           not strings, and %strip must not shift them anyway. */
+        dptr = get_entries(c) + c->special_entry_count;
         for (i = c->special_entry_count; i < current_entry_count; i++, dptr++)
         {
             int len = strlen(dptr->name);
